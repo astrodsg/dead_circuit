@@ -141,7 +141,7 @@ def find_requirement(requirement):
         if os.path.isdir(package_dir):
             return package_dir
 
-        package_module = os.path.join(lib_dir, requirement, '.py')
+        package_module = os.path.join(lib_dir, requirement+'.py')
         if os.path.exists(package_module):
             return package_module
 
