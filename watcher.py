@@ -6,9 +6,11 @@ import argparse
 import datetime
 import logging
 import os
+import re
 import sys
 import subprocess
 import time
+from typing import List
 
 try:
     from watchdog.observers import Observer
@@ -41,7 +43,7 @@ def get_project_dir(projects_dir: str, project_name: str = None):
     """ Get directory of the projecct """
     if project_name is None:
         project_name = input('provide project name: ')
-
+    project_name = os.path.basename(project_name)
     project_dir = os.path.join(projects_dir, project_name)
     if not os.path.isdir(project_dir):
         projects = os.listdir(projects_dir)
@@ -63,14 +65,20 @@ class Handler:
 
     """
     def __init__(
-            self,
-            to_dir: str,
-            update_min_seconds: int = 5,
+        self,
+        to_dir: str,
+        update_min_seconds: int = 5,
+        ignore_files_regex: List = None,
     ):
+
         check_directory_exists(to_dir)
         self.to_dir = to_dir
         self.last_update_at = time.time()
         self.update_min_seconds = update_min_seconds
+        self.ignore_files_regex = [
+            re.compile(r)
+            for r in ignore_files_regex or []
+        ]
         logger.info('copy_to: {}'.format(self.to_dir))
 
     def send_file(self, filepath: str):
@@ -88,13 +96,17 @@ class Handler:
             return
         if event.is_directory:
             return
-        self.send_file(event.src_path)
+        filepath = event.src_path
+        for ignore_regex in self.ignore_files_regex:
+            if ignore_regex.match(filepath):
+                logger.debug(f'Ignore file {filepath} because "{ignore_regex.pattern}"')
+                return
+        self.send_file(filepath)
 
 
 def watch_directory(
         directory_to_watch: str,
         handler: Handler,
-        dt: int = 5
     ):
     """ Start watching directory using handler 
     
@@ -127,6 +139,10 @@ if __name__ == "__main__":
     circuitpy_dir = os.path.abspath(pargs.output)
     projects_dir = pargs.projects_dir
 
+    ignore_files_regex = [
+        '.*\.tmp$'
+    ]
+
     # Configure logging
     logging.basicConfig(level=logging.DEBUG)
 
@@ -136,5 +152,5 @@ if __name__ == "__main__":
     # 1. watch for updates 
     watch_directory(
         directory_to_watch=project_dir,
-        handler=Handler(circuitpy_dir),
+        handler=Handler(circuitpy_dir, ignore_files_regex=ignore_files_regex),
     )
