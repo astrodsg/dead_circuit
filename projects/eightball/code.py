@@ -5,6 +5,7 @@ import os
 import random
 import board
 import displayio
+import neopixel
 import adafruit_lis3dh
 
 SENSITIVITY = 3   # reading in Z direction to trigger, adjustable
@@ -65,6 +66,9 @@ def change_image(splash, images, i=None):
 
 
 if __name__ == '__main__':
+    pixels = neopixel.NeoPixel(board.NEOPIXEL, 1)
+    pixels[0] = (0, 0, 0)
+
     splash = displayio.Group()
     board.DISPLAY.show(splash)
     images = list_directory(IMAGES_DIR, 'bmp')
