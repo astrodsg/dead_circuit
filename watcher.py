@@ -9,7 +9,11 @@ import os
 import sys
 import subprocess
 import time
-from watchdog.observers import Observer
+
+try:
+    from watchdog.observers import Observer
+except ImportError:
+    raise ImportError('Need to install `pip install watchdog`')
 
 
 DEFAULT_PROJECTS_DIR = './projects'
