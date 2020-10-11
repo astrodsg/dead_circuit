@@ -22,9 +22,6 @@ DEFAULT_PROJECTS_DIR = './projects'
 # copy files to the usb volume
 DEFAULT_CIRCUITPY_DIR = '/Volumes/CIRCUITPY'
 
-# copy package requirements
-REQUIREMENTS_FILENAME = 'requirements.txt'
-
 # download circuit libraries for requirements
 DEFAULT_REQUIREMENTS_CACHE_DIR = './untracked_downloads'
 REQUIREMENTS_BUNDLES = {
@@ -45,8 +42,31 @@ REQUIREMENTS_BUNDLES = {
     )
 }
 
+parser = argparse.ArgumentParser()
+parser.add_argument('project', nargs='?')
+parser.add_argument(
+    '-y', '--yes',
+    action='store_true',
+    help='Answer yes to deleting files',
+)
+parser.add_argument(
+    '-o', '--output',
+    default=DEFAULT_CIRCUITPY_DIR,
+    help=f'Output directory of the circuitpy, default={DEFAULT_CIRCUITPY_DIR}'
+)
+parser.add_argument(
+    '-p', '--projects-dir',
+    default=DEFAULT_PROJECTS_DIR,
+    help=f'Projects directory, default={DEFAULT_PROJECTS_DIR}'
+)
+parser.add_argument(
+    '--requirments-cache-dir',
+    default=DEFAULT_REQUIREMENTS_CACHE_DIR,
+    help=f'Location to download requirements bundles, default={DEFAULT_REQUIREMENTS_CACHE_DIR}'
+)
 
-def yes_no_from_user(msg):
+
+def yes_no_from_user(msg: str):
     """ Utility to get a yes/no answer from user and return boolean """
     msg = msg + ' [y/n]: '
     while True:
@@ -211,49 +231,21 @@ def download_and_copy_requirements(
 
     # 1. check for requirements destination
     if not os.path.isdir(requirements_destination):
-        logger.debug(
-            f'Creating requirements destination {requirements_destination}')
+        logger.debug(f'Creating requirements destination {requirements_destination}')
         os.mkdir(requirements_destination)
 
     # 1. download all requirements bundles if not already downloaded
-    download_requirements_bundles(
-        requirements_bundles, requirments_cache_dir)
+    download_requirements_bundles(requirements_bundles, requirments_cache_dir)
 
     # 1. find and copy
     requirements = read_requirements_file(requirements_file)
     for requirement in requirements:
-        package_location = find_requirement_location(
-            requirement, requirments_cache_dir)
+        package_location = find_requirement_location(requirement, requirments_cache_dir)
         copy_files(package_location, requirements_destination)
 
 
-parser = argparse.ArgumentParser()
-parser.add_argument('project', nargs='?')
-parser.add_argument(
-    '-y', '--yes',
-    action='store_true',
-    help='Answer yes to deleting files',
-)
-parser.add_argument(
-    '-o', '--output',
-    default=DEFAULT_CIRCUITPY_DIR,
-    help=f'Output directory of the circuitpy, default={DEFAULT_CIRCUITPY_DIR}'
-)
-parser.add_argument(
-    '-p', '--projects-dir',
-    default=DEFAULT_PROJECTS_DIR,
-    help=f'Projects directory, default={DEFAULT_PROJECTS_DIR}'
-)
-parser.add_argument(
-    '--requirments-cache-dir',
-    default=DEFAULT_REQUIREMENTS_CACHE_DIR,
-    help=(
-        f'Location to download requirements bundles, '
-        f'default={DEFAULT_REQUIREMENTS_CACHE_DIR}'
-    )
-)
-
 if __name__ == "__main__":
+    # Get parameters from default or command line
     pargs = parser.parse_args()
     project_name = pargs.project
     circuitpy_dir = os.path.abspath(pargs.output)
@@ -262,21 +254,23 @@ if __name__ == "__main__":
     answer_yes = pargs.yes
     user_confirm = not answer_yes
 
+    # Configure logging
     logging.basicConfig(level=logging.DEBUG)
 
+    # 1. check that circuitpy is mounted
     if not os.path.isdir(circuitpy_dir):
         raise FileNotFoundError(f'Please mount circuitpy {circuitpy_dir}')
 
     # 1. get project directory
     project_dir = get_project_dir(projects_dir, project_name)
 
-    # 1. delete files
+    # 1. delete files currently on circuitpy
     delete_files(circuitpy_dir, user_confirm=user_confirm)
 
-    # 1. copy all files from the project to the circuitpy
+    # 1. copy all files from the project dir to the circuitpy dir
     copy_files(os.path.join(project_dir, '*'), circuitpy_dir)
 
-    # 1. get requirements and copy them to circuitpy
+    # 1. get requirements and copy them to circuitpy `lib` dir
     requirements_file = os.path.join(project_dir, 'requirements.txt')
     requirements_destination = os.path.join(circuitpy_dir, 'lib')
     download_and_copy_requirements(
