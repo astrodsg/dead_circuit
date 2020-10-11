@@ -6,14 +6,15 @@ https://learn.adafruit.com/circuitpython-hardware-lis3dh-accelerometer/software
 
 """
 import argparse
-import zipfile
+import logging
 import os
 import sys
 import subprocess
-import urllib.request
-
 from typing import Dict, List
+import urllib.request
+import zipfile
 
+logger = logging.getLogger(__name__)
 
 # copy from the project
 DEFAULT_PROJECTS_DIR = './projects'
@@ -57,6 +58,7 @@ def yes_no_from_user(msg):
 
 
 def get_project_dir(projects_dir: str, project_name: str = None):
+    """ Get directory of the projecct """
     if project_name is None:
         project_name = input('provide project name: ')
 
@@ -71,7 +73,7 @@ def get_project_dir(projects_dir: str, project_name: str = None):
 
 
 def delete_files(location: str, user_confirm: bool = True):
-    print(f"""
+    logger.warning(f"""
     WARNING: About to remove files from {location} type 'n' to abort.
     """)
     for name in os.listdir(location):
@@ -81,13 +83,13 @@ def delete_files(location: str, user_confirm: bool = True):
         if not user_confirm or yes_no_from_user(f'remove {file_or_dir}?'):
             subprocess.check_call(['rm', '-rf', file_or_dir])
         else:
-            print('stopping')
+            logger.error('User requested stop')
             sys.exit(1)
 
 
 def copy_files(source: str, destination: str = None):
     cmd = f"cp -rp {source} {destination}"
-    print(cmd)
+    logger.info(cmd)
     status, msg = subprocess.getstatusoutput(cmd)
     if status != 0:
         raise IOError(msg)
@@ -97,7 +99,7 @@ def get_project_requirements(project_dir):
     requirements = []
     requirements_file = os.path.join(project_dir, REQUIREMENTS_FILENAME)
     if not os.path.exists(requirements_file):
-        print(f'no requirements needed: {requirements_file}')
+        logger.info(f'no requirements needed: {requirements_file}')
     else:
         with open(requirements_file) as fp:
             for line in fp:
@@ -119,7 +121,7 @@ def download_sources(downloads_dir: str):
     if not os.path.isdir(downloads_dir):
         os.mkdir(downloads_dir)
     for name, url in DOWNLOAD_SOURCES.items():
-        print(f'downloading {name} from {url}')
+        logger.debug(f'downloading {name} from {url}')
         download(url, downloads_dir)
 
 
@@ -129,7 +131,6 @@ def find_requirement(requirement: str, downloads_dir: str):
         if not os.path.isdir(dirpath):
             continue
 
-        print(dirpath)
         # e.g. untracked_downlaods/adafruit-circuitpython-bundle-py-20190601/lib
         lib_dir = os.path.join(dirpath, 'lib')
         if not os.path.isdir(lib_dir):
@@ -208,6 +209,7 @@ if __name__ == "__main__":
     answer_yes = pargs.yes
     user_confirm = not answer_yes
 
+    logging.basicConfig(level=logging.DEBUG)
 
     if not os.path.isdir(circuitpy_dir):
         raise FileNotFoundError(f'Please mount circuitpy {circuitpy_dir}')
