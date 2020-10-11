@@ -5,24 +5,27 @@
 https://learn.adafruit.com/circuitpython-hardware-lis3dh-accelerometer/software
 
 """
+import argparse
 import zipfile
 import os
 import sys
 import subprocess
 import urllib.request
 
+from typing import Dict, List
+
 
 # copy from the project
-PROJECTS_DIR = './projects'
+DEFAULT_PROJECTS_DIR = './projects'
 
 # copy files to the usb volume
-CIRCUITPY_DIR = '/Volumes/CIRCUITPY'
+DEFAULT_CIRCUITPY_DIR = '/Volumes/CIRCUITPY'
 
 # copy package requirements
 REQUIREMENTS_FILENAME = 'requirements.txt'
 
 # download circuit libraries for requirements
-DOWNLOAD_DIR = './untracked_downloads'
+DEFAULT_DOWNLOAD_DIR = './untracked_downloads'
 DOWNLOAD_SOURCES = {
     'circuitpython_busdriver': (
         "https://github.com/adafruit/Adafruit_CircuitPython_BusDevice/"
@@ -53,15 +56,13 @@ def yes_no_from_user(msg):
         print('enter [y]es or [n]o')
 
 
-def get_project_from_user():
-    if len(sys.argv) == 2:
-        project_name = sys.argv[1]
-    else:
+def get_project_dir(projects_dir: str, project_name: str = None):
+    if project_name is None:
         project_name = input('provide project name: ')
 
-    project_dir = os.path.join(PROJECTS_DIR, project_name)
+    project_dir = os.path.join(projects_dir, project_name)
     if not os.path.isdir(project_dir):
-        projects = os.listdir(PROJECTS_DIR)
+        projects = os.listdir(projects_dir)
         raise FileNotFoundError(
             f'no project named {project_name} at {project_dir}\n'
             f'please choose from {projects}'
@@ -69,24 +70,22 @@ def get_project_from_user():
     return project_dir
 
 
-def delete_files_after_checking_with_user(destination):
+def delete_files(location: str, user_confirm: bool = True):
     print(f"""
-    WARNING: About to remove files from {CIRCUITPY_DIR} type 'n' to abort.
+    WARNING: About to remove files from {location} type 'n' to abort.
     """)
-    for name in os.listdir(destination):
+    for name in os.listdir(location):
         if name.startswith('.'):
             continue
-        file_or_dir = os.path.join(destination, name)
-        if yes_no_from_user(f'remove {file_or_dir}?'):
+        file_or_dir = os.path.join(location, name)
+        if not user_confirm or yes_no_from_user(f'remove {file_or_dir}?'):
             subprocess.check_call(['rm', '-rf', file_or_dir])
         else:
             print('stopping')
             sys.exit(1)
 
 
-def copy_files_to_circuitpy(source, destination=None):
-    if destination is None:
-        destination = os.path.abspath(CIRCUITPY_DIR)
+def copy_files(source: str, destination: str = None):
     cmd = f"cp -rp {source} {destination}"
     print(cmd)
     status, msg = subprocess.getstatusoutput(cmd)
@@ -109,24 +108,24 @@ def get_project_requirements(project_dir):
     return requirements
 
 
-def download(url):
-    output_file = os.path.join(DOWNLOAD_DIR, os.path.basename(url))
+def download(url: str, downloads_dir: str):
+    output_file = os.path.join(downloads_dir, os.path.basename(url))
     urllib.request.urlretrieve(url, output_file)
     with zipfile.ZipFile(output_file) as zp:
         zp.extractall(os.path.dirname(output_file))
 
 
-def download_sources():
-    if not os.path.isdir(DOWNLOAD_DIR):
-        os.mkdir(DOWNLOAD_DIR)
+def download_sources(downloads_dir: str):
+    if not os.path.isdir(downloads_dir):
+        os.mkdir(downloads_dir)
     for name, url in DOWNLOAD_SOURCES.items():
         print(f'downloading {name} from {url}')
-        download(url)
+        download(url, downloads_dir)
 
 
-def find_requirement(requirement):
-    for dirname in os.listdir(DOWNLOAD_DIR):
-        dirpath = os.path.join(DOWNLOAD_DIR, dirname)
+def find_requirement(requirement: str, downloads_dir: str):
+    for dirname in os.listdir(downloads_dir):
+        dirpath = os.path.join(downloads_dir, dirname)
         if not os.path.isdir(dirpath):
             continue
 
@@ -148,18 +147,79 @@ def find_requirement(requirement):
     raise FileNotFoundError(f'could not find requirement {requirement}')
 
 
+def install_requirements(
+    requirements_file: str,
+    requirements_index: Dict,
+    requirements_cache_dir: str,
+    destination_dir: str,
+):
+    # 1. get requirements from requirements file
+    requirements = []
+    if not os.path.exists(requirements_file):
+        logger.debug(f'no requirements needed: {requirements_file}')
+        return
+    else:
+        with open(requirements_file) as fp:
+            for line in fp:
+                package_name = line.rstrip().strip()
+                if package_name == '' or package_name.startswith('#'):
+                    continue
+                requirements.append(package_name)
+
+    # 1. Download anc cache requirements
+    requirements_location = {}
+    for package_name in requirements:
+        url = requirements_index[package_name]
+        package_dir = download_requirement(url, requirements_cache_dir)
+        requirements_location[package_name] = package_dir
+
+    #
+
+
+parser = argparse.ArgumentParser()
+parser.add_argument('project', nargs='?')
+parser.add_argument(
+    '-y', '--yes',
+    action='store_true',
+    help='Answer yes to deleting files',
+)
+parser.add_argument(
+    '-o', '--output',
+    default=DEFAULT_CIRCUITPY_DIR,
+    help=f'Output directory of the circuitpy, default={DEFAULT_CIRCUITPY_DIR}'
+)
+parser.add_argument(
+    '-p', '--projects-dir',
+    default=DEFAULT_PROJECTS_DIR,
+    help=f'Projects directory, default={DEFAULT_PROJECTS_DIR}'
+)
+parser.add_argument(
+    '--downloads-dir',
+    default=DEFAULT_DOWNLOAD_DIR,
+    help=f'Location to download requirements, default={DEFAULT_DOWNLOAD_DIR}'
+)
+
 if __name__ == "__main__":
-    if not os.path.isdir(CIRCUITPY_DIR):
-        raise FileNotFoundError(f'Please mount circuitpy {CIRCUITPY_DIR}')
+    pargs = parser.parse_args()
+    project_name = pargs.project
+    circuitpy_dir = os.path.abspath(pargs.output)
+    projects_dir = pargs.projects_dir
+    downloads_dir = pargs.downloads_dir
+    answer_yes = pargs.yes
+    user_confirm = not answer_yes
+
+
+    if not os.path.isdir(circuitpy_dir):
+        raise FileNotFoundError(f'Please mount circuitpy {circuitpy_dir}')
 
     # 1. get project directory
-    project_dir = get_project_from_user()
+    project_dir = get_project_dir(projects_dir, project_name)
 
     # 1. delete files
-    delete_files_after_checking_with_user(CIRCUITPY_DIR)
+    delete_files(circuitpy_dir, user_confirm=user_confirm)
 
     # 1. copy all files from the project to the circuitpy
-    copy_files_to_circuitpy(os.path.join(project_dir, '*'))
+    copy_files(os.path.join(project_dir, '*'), circuitpy_dir)
 
     # 1. get circuitpy requirements
     requirements = get_project_requirements(project_dir)
@@ -167,13 +227,13 @@ if __name__ == "__main__":
         sys.exit(0)
 
     # 1. download all possible requirements locally
-    if not os.path.isdir(DOWNLOAD_DIR):
-        download_sources()
+    if not os.path.isdir(downloads_dir):
+        download_sources(downloads_dir)
 
     # 1. find and copy
-    lib_destination = os.path.join(CIRCUITPY_DIR, 'lib')
+    lib_destination = os.path.join(circuitpy_dir, 'lib')
     if not os.path.isdir(lib_destination):
         os.mkdir(lib_destination)
     for pypackage in requirements:
-        pypackage_location = find_requirement(pypackage)
-        copy_files_to_circuitpy(pypackage_location, lib_destination + '/')
+        pypackage_location = find_requirement(pypackage, downloads_dir)
+        copy_files(pypackage_location, lib_destination + '/')
