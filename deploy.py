@@ -82,7 +82,7 @@ def get_project_dir(projects_dir: str, project_name: str = None):
     """ Get directory of the projecct """
     if project_name is None:
         project_name = input('provide project name: ')
-
+    project_name = os.path.basename(project_name)
     project_dir = os.path.join(projects_dir, project_name)
     if not os.path.isdir(project_dir):
         projects = os.listdir(projects_dir)
